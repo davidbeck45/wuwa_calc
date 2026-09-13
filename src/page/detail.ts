@@ -303,7 +303,7 @@ function energyRequirements(run: TeamRun, lines: ChainGroup[][]): Map<string, Ma
     cells.set(m.name, own);
     const maxEnergy = m.loadout.resonator.maxEnergy;
     const combo = run.combo[idx]!;
-    const constantSources = menuStats(m.loadout.pieces(combo.weapon, combo.echo, combo.mainstat, combo.sequence, combo.matrix !== null, combo.highSubs, erOf[idx]!))
+    const constantSources = menuStats(m.loadout.pieces(combo.weapon, combo.echo, combo.mainstat, combo.sequence, combo.matrix !== null, combo.highSubs, erOf[idx]!, combo.mySubs))
       .filter((e) => e.stat === Stat.ER);
     const constant = constantSources.reduce((n, e) => n + e.value, 0);
 
@@ -332,7 +332,7 @@ function energyRequirements(run: TeamRun, lines: ChainGroup[][]): Map<string, Ma
     // and the kit's own Crit Rate minimum, against what the character screen shows
     const minCr = m.loadout.minCritRate;
     if (minCr) {
-      const cr = menuStats(m.loadout.pieces(combo.weapon, combo.echo, combo.mainstat, combo.sequence, combo.matrix !== null, combo.highSubs, erOf[idx]!))
+      const cr = menuStats(m.loadout.pieces(combo.weapon, combo.echo, combo.mainstat, combo.sequence, combo.matrix !== null, combo.highSubs, erOf[idx]!, combo.mySubs))
         .reduce((n, e) => n + (e.stat === Stat.CritRate ? e.value : 0), 0);
       const kit = line("Kit Crit Rate Requirement", minCr, cr);
       own.set(statLabel(Stat.CritRate), tag(minCr, kit.met, [kit.html]));

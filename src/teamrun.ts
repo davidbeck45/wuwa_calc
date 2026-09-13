@@ -411,7 +411,7 @@ function erHeld(m: Member, c: Combo, rolls: number): number {
   if (hit !== undefined) return hit;
   // constant stats are one piece's own, so the pieces' ER sums — and each is priced once (`gearEr`)
   let held = 0;
-  for (const g of m.loadout.pieces(c.weapon, c.echo, c.mainstat, c.sequence, c.matrix !== null, c.highSubs, rolls)) held += gearEr(g);
+  for (const g of m.loadout.pieces(c.weapon, c.echo, c.mainstat, c.sequence, c.matrix !== null, c.highSubs, rolls, c.mySubs)) held += gearEr(g);
   byRolls[rolls] = held;
   return held;
 }
@@ -454,7 +454,7 @@ function crHeld(m: Member, c: Combo, rolls: number): number {
   if (!byRolls) per.set(c.key, (byRolls = []));
   const hit = byRolls[rolls];
   if (hit !== undefined) return hit;
-  const held = menuStats(m.loadout.pieces(c.weapon, c.echo, c.mainstat, c.sequence, c.matrix !== null, c.highSubs, rolls))
+  const held = menuStats(m.loadout.pieces(c.weapon, c.echo, c.mainstat, c.sequence, c.matrix !== null, c.highSubs, rolls, c.mySubs))
     .reduce((n, e) => n + (e.stat === Stat.CritRate ? e.value : 0), 0);
   byRolls[rolls] = held;
   return held;
@@ -506,7 +506,8 @@ export function runTeam(teamKey: string, members: Member[], combo: Combo[], trac
       const key = needKey(teamKey, combo);
       const known = ER_NEED_AT.has(key);
       const worn = erRollsFor(teamKey, members, combo).map((r, i) => Math.max(r, floor[i]!));
-      const guard = members.map((m, i) => !combo[i]!.highSubs && worn[i]! < top(m));
+      // a "My build" spread is a fixed piece with no tier to climb, like the high one
+      const guard = members.map((m, i) => !combo[i]!.highSubs && !combo[i]!.mySubs && worn[i]! < top(m));
       let run: TeamRun;
       try {
         run = runTeamInner(teamKey, members, combo, trace, variants, worn, guard);
@@ -530,7 +531,7 @@ export function runTeam(teamKey: string, members: Member[], combo: Combo[], trac
       }
       if (measured) {
         const asked = erRollsFor(teamKey, members, combo);
-        const over = members.some((m, i) => !combo[i]!.highSubs && m.loadout.substat.at(Math.max(asked[i]!, floor[i]!)) !== m.loadout.substat.at(worn[i]!));
+        const over = members.some((m, i) => !combo[i]!.highSubs && !combo[i]!.mySubs && m.loadout.substat.at(Math.max(asked[i]!, floor[i]!)) !== m.loadout.substat.at(worn[i]!));
         if (over) continue;
       }
       // A variant wore the tier the requirement known before the run asked of it, so one that ends
@@ -547,7 +548,7 @@ export function runTeam(teamKey: string, members: Member[], combo: Combo[], trac
             const altKey = needKey(teamKey, at);
             if (!ER_NEED_AT.has(altKey)) ER_NEED_AT.set(altKey, measured);
             const asked = erRollsFor(teamKey, members, at)[i]!;
-            if (!alt.highSubs && m.loadout.substat.at(asked) !== m.loadout.substat.at(slot.variantRolls[v]!)) run.variantRuns[i]![v]!.unsafe = true;
+            if (!alt.highSubs && !alt.mySubs && m.loadout.substat.at(asked) !== m.loadout.substat.at(slot.variantRolls[v]!)) run.variantRuns[i]![v]!.unsafe = true;
           });
         });
       }
@@ -587,20 +588,20 @@ export function deriveRun(teamKey: string, members: Member[], combo: Combo[], fr
   // the substat piece a row of `from` wore: its own build's, or a variant's own
   const rowPiece = (j: number, v: number): Gear => {
     const l = members[j]!.loadout, c = from.combo[j]!;
-    return v < 0 || c.highSubs ? l.spread(c.highSubs, b.worn[j]!) : l.substat.at(b.rolls[j]![v]!);
+    return v < 0 || c.highSubs || c.mySubs ? l.spread(c.highSubs, b.worn[j]!, c.mySubs) : l.substat.at(b.rolls[j]![v]!);
   };
   // the first attempt wears what the requirement known now asks, as `runTeam`'s does
   const key = needKey(teamKey, combo);
   const known = ER_NEED_AT.has(key);
   const worn = erRollsFor(teamKey, members, combo);
   for (let j = 0; j < members.length; j++) {
-    if (members[j]!.loadout.spread(combo[j]!.highSubs, worn[j]!) !== rowPiece(j, pick[j]!)) return null;
+    if (members[j]!.loadout.spread(combo[j]!.highSubs, worn[j]!, combo[j]!.mySubs) !== rowPiece(j, pick[j]!)) return null;
   }
   // a main stat moving gear ER moves the constant each Liberation is held to: where one of `from`'s
   // asks (unmoved by a constant shift) is past it, a real run would give up (ER_SHORT), so it is fought
   for (let j = 0; j < members.length; j++) {
     const m = members[j]!, c = combo[j]!;
-    if (pick[j]! < 0 || c.highSubs || gearEr(c.mainstat) === gearEr(from.combo[j]!.mainstat)) continue;
+    if (pick[j]! < 0 || c.highSubs || c.mySubs || gearEr(c.mainstat) === gearEr(from.combo[j]!.mainstat)) continue;
     if (worn[j]! >= m.loadout.substat.tiers[m.loadout.substat.tiers.length - 1]!.rolls) continue;
     const held = erHeld(m, c, worn[j]!);
     if (b.wants[j]!.some((w) => w > held + ER_TOLERANCE + 1e-9)) return null;
@@ -618,7 +619,7 @@ export function deriveRun(teamKey: string, members: Member[], combo: Combo[], fr
         const rolls = erRollsWanted(m, alt, (ER_NEED_AT.get(needKey(teamKey, variantCombo(combo, i, alt))) ?? own)[i] ?? 0);
         const src = alt.key === from.combo[i]!.key ? -1 : b.alts[i]?.findIndex((a) => a.key === alt.key) ?? -1;
         if (src < 0 && alt.key !== from.combo[i]!.key) return null;
-        const piece = combo[i]!.highSubs ? m.loadout.spread(true, worn[i]!) : m.loadout.substat.at(rolls);
+        const piece = combo[i]!.highSubs || combo[i]!.mySubs ? m.loadout.spread(combo[i]!.highSubs, worn[i]!, combo[i]!.mySubs) : m.loadout.substat.at(rolls);
         if (piece !== rowPiece(i, src)) return null;
         source[i]!.push(src);
         variantRolls[i]!.push(rolls);
@@ -632,7 +633,7 @@ export function deriveRun(teamKey: string, members: Member[], combo: Combo[], fr
     remember(teamKey, members, combo, measured);
   }
   const asked = erRollsFor(teamKey, members, combo);
-  if (members.some((m, i) => !combo[i]!.highSubs && m.loadout.substat.at(asked[i]!) !== m.loadout.substat.at(worn[i]!))) return null;
+  if (members.some((m, i) => !combo[i]!.highSubs && !combo[i]!.mySubs && m.loadout.substat.at(asked[i]!) !== m.loadout.substat.at(worn[i]!))) return null;
 
   const index = new Map(members.map((m, i) => [m.name, i]));
   const avgAt = (h: HitRecord): number => {
@@ -647,7 +648,7 @@ export function deriveRun(teamKey: string, members: Member[], combo: Combo[], fr
     if (!ER_NEED_AT.has(altKey)) ER_NEED_AT.set(altKey, measured);
     const askedAlt = erRollsFor(teamKey, members, at)[i]!;
     const src = source[i]![v]!;
-    return (src >= 0 && b.engineUnsafe[i]![src]!) || (!alt.highSubs && m.loadout.substat.at(askedAlt) !== m.loadout.substat.at(variantRolls[i]![v]!));
+    return (src >= 0 && b.engineUnsafe[i]![src]!) || (!alt.highSubs && !alt.mySubs && m.loadout.substat.at(askedAlt) !== m.loadout.substat.at(variantRolls[i]![v]!));
   }));
   const { variantRuns, ...sums } = sumHits(b.hits, b.complete, b.frames, members, avgAt, members.map((_, i) => (variants?.[i]?.length ? source[i]! : [])),
     (i, v) => unsafe[i]![v]!, true);
@@ -661,7 +662,7 @@ function runTeamInner(teamKey: string, members: Member[], combo: Combo[], trace:
   members.forEach((m, i) => {
     state.active = i;
     const c = combo[i]!;
-    withTeam(state, () => { for (const g of m.loadout.pieces(c.weapon, c.echo, c.mainstat, c.sequence, c.matrix !== null, c.highSubs, erRolls[i])) equip(g, 1); });
+    withTeam(state, () => { for (const g of m.loadout.pieces(c.weapon, c.echo, c.mainstat, c.sequence, c.matrix !== null, c.highSubs, erRolls[i], c.mySubs)) equip(g, 1); });
     state.slots[i]!.constEr = erHeld(m, c, erRolls[i]!);
     state.slots[i]!.erGuard = guard[i] ?? false;
     const alts = variants?.[i];
@@ -676,12 +677,12 @@ function runTeamInner(teamKey: string, members: Member[], combo: Combo[], trace:
       // substat piece along with its main stat — at the rolls the requirement known so far asks.
       // A variant has this build's buffs and so its need: where its own combo is not yet known,
       // this one's measurement is the guess, ahead of the team's
-      const worn = c.highSubs ? null : m.loadout.substat.at(erRolls[i]!);
+      const worn = c.highSubs || c.mySubs ? null : m.loadout.substat.at(erRolls[i]!);
       slot.variantSubOf = worn;
       const own = ER_NEED_AT.get(needKey(teamKey, combo)) ?? erNeedFor(teamKey, members, combo);
       slot.variantRolls = alts.map((alt) => erRollsWanted(m, alt, (ER_NEED_AT.get(needKey(teamKey, variantCombo(combo, i, alt))) ?? own)[i] ?? 0));
       slot.variantSubs = slot.variantRolls.map((rolls) => {
-        const piece = c.highSubs ? null : m.loadout.substat.at(rolls);
+        const piece = c.highSubs || c.mySubs ? null : m.loadout.substat.at(rolls);
         return piece === worn ? null : piece;
       });
     }
