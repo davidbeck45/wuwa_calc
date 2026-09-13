@@ -447,8 +447,9 @@ export function prospectiveRows(f: Filters = filters): number {
     .reduce((sum, [, members]) => sum + estimatedRowCount(members, f), pinnedRows.size);
 }
 
-/** One member's combo key (`comboOf()`): weapon.echo.mainstat.sN.rN, then .m and .h. */
-const COMBO_KEY = /^(\d+)\.(\d+)\.(\d+)\.s(\d+)\.r(\d+)(\.m)?(\.h)?$/;
+/** One member's combo key (`comboOf()`): weapon.echo.mainstat.sN.rN, then .m and .h, and .uKEY for
+ *  a "My build" row (Wuthering Tools+). */
+const COMBO_KEY = /^(\d+)\.(\d+)\.(\d+)\.s(\d+)\.r(\d+)(\.m)?(\.h)?(\.u[0-9a-z]*)?$/;
 
 /** A row key's picks, member by member — null where a combo key doesn't parse. */
 export function picksOfKey(key: string): Pick[] | null {
@@ -456,7 +457,7 @@ export function picksOfKey(key: string): Pick[] | null {
   for (const k of key.split("-").slice(1)) {
     const p = COMBO_KEY.exec(k);
     if (!p) return null;
-    picks.push({ weapon: +p[1]!, echo: +p[2]!, mainstat: +p[3]!, sequence: +p[4]!, refine: +p[5]!, matrix: !!p[6], highSubs: !!p[7] });
+    picks.push({ weapon: +p[1]!, echo: +p[2]!, mainstat: +p[3]!, sequence: +p[4]!, refine: +p[5]!, matrix: !!p[6], highSubs: !!p[7], mySubs: !!p[8] });
   }
   return picks;
 }
@@ -467,12 +468,15 @@ export function rowFromKey(key: string): TeamRow | null {
   const teamKey = key.split("-")[0];
   const members = teamKey ? TEAMS[teamKey] : undefined;
   const picks = picksOfKey(key);
+  const keys = key.split("-").slice(1);
   if (!teamKey || !members || !picks || picks.length !== members.length) return null;
   const combo: Combo[] = [];
   for (let i = 0; i < members.length; i++) {
     const l = members[i]!.loadout;
     const pick = picks[i]!;
     if (!l.refinements[pick.weapon]?.[pick.refine] || !echoPicks(members[i]!, members).includes(pick.echo) || !l.mainstats[pick.mainstat] || !l.fits(pick.echo, pick.mainstat) || (pick.matrix && !l.resonator.matrix) || pick.sequence < l.minSequence) return null;
+    // a "My build" row is only as current as the spread it was keyed on
+    if (pick.mySubs && (!l.mySubstat || !keys[i]!.endsWith(`.u${l.mySubstatKey}`))) return null;
     combo.push(comboOf(l, pick));
   }
   return { key, teamKey, members, combo };
@@ -759,7 +763,7 @@ export const gearShut = (f: Filters): Filters => ({
 function optimalGear(teamKey: string, picks: Pick[], f: Filters = filters): Pick[] | null {
   const solved = bestPicks.get(bestKey(teamKey, TEAMS[teamKey]!, gearShut(f)));
   const same = (a: Pick, b: Pick): boolean => a.weapon === b.weapon && a.refine === b.refine && a.sequence === b.sequence
-    && a.highSubs === b.highSubs && a.matrix === b.matrix;
+    && a.highSubs === b.highSubs && !!a.mySubs === !!b.mySubs && a.matrix === b.matrix;
   return solved?.rows.find((row) => row.every((p, i) => same(p, picks[i]!))) ?? null;
 }
 
@@ -773,7 +777,8 @@ const TEAM_BY_LOADOUTS = new Map(ALL_TEAMS.map((t, i): [string, string] => [t.lo
 export function teamTag(key: string, full = false): string {
   const team = teamAt(key.split("-")[0] ?? "");
   const picks = picksOfKey(key);
-  if (!team || !picks || picks.length !== team.loadouts.length) return key;
+  // a team code has no place for a "My build" spread (a player's own, Wuthering Tools+): written out plain
+  if (!team || !picks || picks.length !== team.loadouts.length || picks.some((p) => p.mySubs)) return key;
   const optimal = full ? null : optimalGear(key.split("-")[0]!, picks);
   try {
     return teamCode(team.loadouts.map((l, i) => {

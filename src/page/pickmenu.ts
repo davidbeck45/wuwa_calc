@@ -17,7 +17,7 @@ import type { MenuItem } from "./table.js";
 interface Choice { label: string; axis: Axis; pick: Pick; is: (p: Pick) => boolean; free: (keyof Pick)[]; current: boolean; run?: TeamRun }
 
 /** What a row is matched on — the Matrix is the filters', the same on every row. */
-const FIELDS = ["weapon", "echo", "mainstat", "sequence", "refine", "highSubs"] as const;
+const FIELDS = ["weapon", "echo", "mainstat", "sequence", "refine", "highSubs", "mySubs"] as const;
 
 const picksOf = (run: TeamRun): Pick[] => picksOfKey(`${run.teamKey}-${run.combo.map((c) => c.key).join("-")}`)!;
 
@@ -75,8 +75,10 @@ function choices(run: TeamRun, i: number, kind: PickKind): Choice[] {
     return mainstatRanking(run.teamKey, run.members, picksOf(run), i).map(({ mainstat: k, run: ranked }) =>
       ({ ...choice(l.mainstats[k]!.name, "mainstats", { ...cur, mainstat: k }, (p) => p.mainstat === k, []), run: ranked }));
   }
-  return [false, true].map((h) => choice(subsLabel(comboOf(l, { ...cur, highSubs: h })), "substats", { ...cur, highSubs: h },
-    (p) => p.highSubs === h, regear));
+  // ChemX32, High Invest, and the player's own spread where one was registered ("My build", Wuthering Tools+)
+  const spreads = [{ highSubs: false, mySubs: false }, { highSubs: true, mySubs: false }, ...(l.mySubstat ? [{ highSubs: false, mySubs: true }] : [])];
+  return spreads.map((s) => choice(subsLabel(comboOf(l, { ...cur, ...s })), "substats", { ...cur, ...s },
+    (p) => p.highSubs === s.highSubs && !!p.mySubs === s.mySubs, regear));
 }
 
 /** Whether a cell has anything to swap to — main stats by their list alone, ranking them being a run. */
@@ -174,7 +176,7 @@ function ratios(m: Member, owns: [Choice, number][]): [Choice, number][] {
   const keep = axis === "weapons" ? (c: Choice) => l.weapons[c.pick.weapon]!.tier !== Tier.Limited && (!ranked || c.pick.refine === 0)
     : axis === "refines" ? (c: Choice) => c.pick.refine === 0
     : axis === "sequences" ? (c: Choice) => c.pick.sequence === low
-    : axis === "substats" ? (c: Choice) => !c.pick.highSubs
+    : axis === "substats" ? (c: Choice) => !c.pick.highSubs && !c.pick.mySubs
     : () => true;
   const pool = owns.filter(([c]) => keep(c)).map(([, v]) => v);
   const base = pool.length ? Math.max(...pool) : Math.min(...owns.map(([, v]) => v));
