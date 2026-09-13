@@ -191,7 +191,7 @@ export function equippedGear(member: Member, combo: Combo, erRolls = 1): [string
     ...(r.inherent2 ? [["Inherent", r.inherent2] as [string, Gear]] : []),
     ["Weapon", combo.weapon], ["Mainslot", combo.echo.mainslot],
     ...combo.echo.sets.map((g, i): [string, Gear] => [i === 0 ? "Sonata" : "", g]),
-    ["Mainstats", combo.mainstat], ["Substats", l.spread(combo.highSubs, erRolls)]];
+    ["Mainstats", combo.mainstat], ["Substats", l.spread(combo.highSubs, erRolls, combo.mySubs)]];
 }
 
 /** Dmg Bonus scope buckets for the menu stats — each keeps only its biggest line. */
@@ -210,7 +210,7 @@ const OTHER_SCOPES = [
 /** The build's constant stats as the game's character screen shows them (`menuStats()`), zeros dropped. */
 function menuStatRows(member: Member, combo: Combo, erRolls: number): { label: string; value: string }[] {
   const l = member.loadout;
-  const entries = menuStats(l.pieces(combo.weapon, combo.echo, combo.mainstat, combo.sequence, combo.matrix !== null, combo.highSubs, erRolls));
+  const entries = menuStats(l.pieces(combo.weapon, combo.echo, combo.mainstat, combo.sequence, combo.matrix !== null, combo.highSubs, erRolls, combo.mySubs));
   const totals = new Map<number, number>();
   for (const e of entries) totals.set(e.stat, (totals.get(e.stat) ?? 0) + e.value);
   const get = (key: number) => totals.get(key) ?? 0;
@@ -244,7 +244,7 @@ function menuStatRows(member: Member, combo: Combo, erRolls: number): { label: s
   return rows;
 }
 
-export const subsLabel = (combo: Combo): string => (combo.highSubs ? "High Invest" : "ChemX32");
+export const subsLabel = (combo: Combo): string => (combo.mySubs ? "My build" : combo.highSubs ? "High Invest" : "ChemX32");
 
 /**
  * The display-only buffs a spread carries — one per substat roll, one per main-stat echo (see
@@ -401,7 +401,7 @@ export function loadoutTable(run: TeamRun, erReq?: Map<string, string>): string 
   // everything anybody on the team holds — what tells a kit's own buff (put up by a cast, which
   // nobody equips) apart from a piece's
   const equipped = new Set(builds.flatMap(({ member, combo, erRolls: n }) =>
-    member.loadout.pieces(combo.weapon, combo.echo, combo.mainstat, combo.sequence, combo.matrix !== null, combo.highSubs, n)));
+    member.loadout.pieces(combo.weapon, combo.echo, combo.mainstat, combo.sequence, combo.matrix !== null, combo.highSubs, n, combo.mySubs)));
 
   // the resonator herself, under her own name: her kit's own pieces, which are every piece she
   // holds that isn't one of the build picks the rows below already list
@@ -446,7 +446,7 @@ export function loadoutTable(run: TeamRun, erReq?: Map<string, string>): string 
       declaredRows(mainstatSlotBuffs(b.combo.mainstat), b.member.name, false), "Mainstats & Secondary Stats"))));
   rows.push(row("Substats", builds.map((b) => {
     const l = b.member.loadout;
-    const piece = l.spread(b.combo.highSubs, b.erRolls);
+    const piece = l.spread(b.combo.highSubs, b.erRolls, b.combo.mySubs);
     const rolls = substatRollBuffs(piece);
     const lit = litStats(l.resonator.maxEnergy);
     return spreadCell(piece, b.member.name, declaredRows(rolls, b.member.name, true, lit),

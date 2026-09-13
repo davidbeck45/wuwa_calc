@@ -384,6 +384,14 @@ export class Loadout {
   mainstats: Buff[];
   substat: ErSpread;
   highSubstat: ErSpread;
+  /** A third spread handed in from outside the calc at run time — a player's own echo substats
+   *  (Wuthering Tools+ registers the ones equipped in its calculator through
+   *  solver.ts's `setMySubstat()`). Worn instead of the tiered spreads for the "My build" row of a
+   *  Substats compare — a fixed piece, so no ER tier applies to it; null means the row is not
+   *  offered. `mySubstatKey` tells one player's build from the next in row keys, so a cached row
+   *  never outlives the build it ran. */
+  mySubstat: Buff | null = null;
+  mySubstatKey = "";
   /** This build's whole rotation, already compiled into the up-to-three action chains the
    *  scheduler schedules — start of combat, opener, and the Intro chain every visit after
    *  (rotation.ts). One field, not an opener/loop pair: the chains share a body, so splitting
@@ -436,20 +444,22 @@ export class Loadout {
    *  can be read off (see index.ts's own combos). `matrix` is whether Matrix Mode is on — the
    *  piece only goes on when it is *and* this resonator has one. `highSubs` swaps the substat
    *  piece for the high-investment one (that role's own box); `erRolls` is how many ER rolls this
-   *  member's rotation turned out to need, which picks the ChemX32 tier. */
+   *  member's rotation turned out to need, which picks the ChemX32 tier; `mySubs` wears the player's
+   *  own spread when one was registered (`mySubstat`, Wuthering Tools+), a fixed piece no tier applies to. */
   /** The substat piece this build wears: the tier `erRolls` asks for. ChemX32 carries its single
    *  ER roll whatever the bar costs — it is one of the eight the spread does not name. The high
    *  spread spends that slot on the sixth stat instead where the Liberation costs nothing. */
-  spread(highSubs: boolean, erRolls: number): Buff {
+  spread(highSubs: boolean, erRolls: number, mySubs = false): Buff {
+    if (mySubs && this.mySubstat) return this.mySubstat;
     if (!highSubs) return this.substat.at(erRolls);
     return this.resonator.maxEnergy ? this.highSubstat.at(erRolls) : (this.highSubstat.noEr ?? this.highSubstat.at(0));
   }
 
-  pieces(weapon: Weapon, echo: EchoLoadout, mainstat: Buff, sequenceLevel: number, matrix = false, highSubs = false, erRolls = 1): Gear[] {
+  pieces(weapon: Weapon, echo: EchoLoadout, mainstat: Buff, sequenceLevel: number, matrix = false, highSubs = false, erRolls = 1, mySubs = false): Gear[] {
     const r = this.resonator;
     return [
       r, r.talent, r.inherent1, r.inherent2,
-      weapon, ...echo.pieces(), mainstat, this.spread(highSubs, erRolls),
+      weapon, ...echo.pieces(), mainstat, this.spread(highSubs, erRolls, mySubs),
       ...this.sequences.slice(0, sequenceLevel),
       this.mode,
       matrix ? r.matrix : undefined,
