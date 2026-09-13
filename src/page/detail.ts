@@ -312,7 +312,7 @@ function energyRequirements(run: TeamRun): Map<string, Map<string, string>> {
     // and the kit's own Crit Rate minimum, against what the character screen shows
     const minCr = m.loadout.minCritRate;
     if (minCr) {
-      const cr = menuStats(m.loadout.pieces(combo.weapon, combo.echo, combo.mainstat, combo.sequence, combo.matrix !== null, combo.highSubs, erOf[idx]!))
+      const cr = menuStats(m.loadout.pieces(combo.weapon, combo.echo, combo.mainstat, combo.sequence, combo.matrix !== null, combo.highSubs, erOf[idx]!, combo.mySubs))
         .reduce((n, e) => n + (e.stat === Stat.CritRate ? e.value : 0), 0);
       const kit = line("Kit Crit Rate Requirement", minCr, cr);
       own.set(statLabel(Stat.CritRate), tag(minCr, kit.met, [kit.html]));

@@ -210,6 +210,30 @@ export function substats(sub1: Substat, sub2: Substat, sub3: Substat, sub4: Subs
   return new ErSpread(named, tiers);
 }
 
+/** A build's actual substats, roll by roll, from outside the calc — Wuthering Tools+ hands over
+ *  the rolls on the echoes a player has equipped in its calculator. One fixed `Spread` (no ER tiers:
+ *  the rolls are what they are) that echoes.ts deals over the five echoes like any other — the
+ *  game's own rule, at most one line of a stat per echo, keeps every kind to five rolls — its hover
+ *  listing every roll at the value it really has. `kind` is a `Substat` name ("CritRate",
+ *  "FlatAtk", "Skill"…); rolls of a kind the spread doesn't know (Healing Bonus) are skipped, so
+ *  are non-positive values. Worn through `Loadout.mySubstat` (solver.ts's `setMySubstat()`). */
+export function customSubstats(name: string, rolls: { kind: string; value: number }[]): Spread {
+  const byKind = new Map<Substat, number[]>();
+  for (const roll of rolls) {
+    const s = (Substat as unknown as Record<string, Substat | undefined>)[roll.kind];
+    if (s === undefined || typeof s !== "number" || !(roll.value > 0)) continue;
+    byKind.set(s, [...(byKind.get(s) ?? []), roll.value]);
+  }
+  const sorted = [...byKind].sort((a, b) => b[1].length - a[1].length || a[0] - b[0]);
+  const piece = rolledPiece(name, sorted.flatMap(([s, values]) => values.map((v): [Substat, number] => [s, v])));
+  ROLL_BUFFS.set(piece, sorted.flatMap(([s, values]) => {
+    const { stat, tag } = ROLL[s];
+    const label = `${name} - ${statLabel(tag === undefined ? stat : scopedStat(tag, stat))}`;
+    return values.map((v) => new Buff({ name: label, stats: [rollLine(s, v)] }));
+  }));
+  return piece;
+}
+
 /** The high-investment spread's own shape: seven named stats in priority order, and a single roll
  *  for anything an ER promotion pushes past the end. 22 of the 25 rolls at every tier, since ER takes
  *  a named stat's place rather than adding one — the rest are left empty rather than spent on stats

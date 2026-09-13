@@ -296,7 +296,7 @@ export function equippedGear(member: Member, combo: Combo, erRolls = 1): [string
     ...(r.inherent2 ? [["Inherent", r.inherent2] as [string, Gear]] : []),
     ["Weapon", combo.weapon], ["Mainslot", combo.echo.mainslot],
     ...combo.echo.sets.map((g, i): [string, Gear] => [i === 0 ? "Sonata" : "", g]),
-    ...l.echoes.worn(combo.echo, combo.mainstat, l.spread(combo.highSubs, erRolls)).map((g): [string, Gear] => ["Echo", g])];
+    ...l.echoes.worn(combo.echo, combo.mainstat, l.spread(combo.highSubs, erRolls, combo.mySubs)).map((g): [string, Gear] => ["Echo", g])];
 }
 
 /** Dmg Bonus scope buckets for the menu stats — each keeps only its biggest line. */
@@ -315,7 +315,7 @@ const OTHER_SCOPES = [
 /** The build's constant stats as the game's character screen shows them (`menuStats()`), zeros dropped. */
 function menuStatRows(member: Member, combo: Combo, erRolls: number): { label: string; value: string }[] {
   const l = member.loadout;
-  const pieces = l.pieces(combo.weapon, combo.echo, combo.mainstat, combo.sequence, combo.matrix !== null, combo.highSubs, erRolls);
+  const pieces = l.pieces(combo.weapon, combo.echo, combo.mainstat, combo.sequence, combo.matrix !== null, combo.highSubs, erRolls, combo.mySubs);
   const entries = menuStats(pieces);
   const totals = new Map<number, number>();
   for (const e of entries) totals.set(e.stat, (totals.get(e.stat) ?? 0) + e.value);
@@ -350,7 +350,7 @@ function menuStatRows(member: Member, combo: Combo, erRolls: number): { label: s
   return rows;
 }
 
-export const subsLabel = (combo: Combo): string => (combo.highSubs ? "High Invest" : "ChemX32");
+export const subsLabel = (combo: Combo): string => (combo.mySubs ? "My build" : combo.highSubs ? "High Invest" : "ChemX32");
 
 /**
  * The display-only buffs a spread carries — one per substat roll, one per main-stat echo (see
@@ -514,7 +514,7 @@ export function loadoutTable(run: TeamRun, needs?: Map<string, Map<string, strin
   // everything anybody on the team holds — what tells a kit's own buff (put up by a cast, which
   // nobody equips) apart from a piece's
   const equipped = new Set(builds.flatMap(({ member, combo, erRolls: n }) =>
-    member.loadout.pieces(combo.weapon, combo.echo, combo.mainstat, combo.sequence, combo.matrix !== null, combo.highSubs, n)
+    member.loadout.pieces(combo.weapon, combo.echo, combo.mainstat, combo.sequence, combo.matrix !== null, combo.highSubs, n, combo.mySubs)
       .flatMap((g) => (g instanceof Echo ? [g, ...g.sources] : [g]))));
 
   // the resonator herself, under her own name, with any chain level and mode: her kit's own
@@ -556,7 +556,7 @@ export function loadoutTable(run: TeamRun, needs?: Map<string, Map<string, strin
       declaredRows(mainstatSlotBuffs(b.combo.mainstat), b.member.name, false), "Mainstats & Secondary Stats", false, pick(b.slot, "mainstats")))));
   rows.push(row("Substats", builds.map((b) => {
     const l = b.member.loadout;
-    const piece = l.spread(b.combo.highSubs, b.erRolls);
+    const piece = l.spread(b.combo.highSubs, b.erRolls, b.combo.mySubs);
     const rolls = substatRollBuffs(piece);
     const lit = litStats(l.resonator.maxEnergy);
     return spreadCell(piece, b.member.name, declaredRows(rolls, b.member.name, true, lit),

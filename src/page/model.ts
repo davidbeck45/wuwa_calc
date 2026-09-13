@@ -510,7 +510,7 @@ function energyNeeds(run: TeamRun): Map<string, EnergyNeed> {
   const erOf = erRollsFor(run.teamKey, run.members, run.combo);
   return new Map(run.members.map((m, idx) => {
     const combo = run.combo[idx]!;
-    const constant = menuStats(m.loadout.pieces(combo.weapon, combo.echo, combo.mainstat, combo.sequence, combo.matrix !== null, combo.highSubs, erOf[idx]!))
+    const constant = menuStats(m.loadout.pieces(combo.weapon, combo.echo, combo.mainstat, combo.sequence, combo.matrix !== null, combo.highSubs, erOf[idx]!, combo.mySubs))
       .reduce((n, e) => n + (e.stat === Stat.ER ? e.value : 0), 0);
     const slot = run.state!.slots[idx]!;
     const worst = m.loadout.resonator.maxEnergy ? slot.erWorst : 0;
