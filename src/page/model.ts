@@ -369,11 +369,13 @@ export function rowFromKey(key: string): TeamRow | null {
   if (!members || comboKeys.length !== members.length) return null;
   const combo: Combo[] = [];
   for (let i = 0; i < members.length; i++) {
-    const parsed = /^(\d+)\.(\d+)\.(\d+)\.s(\d+)\.r(\d+)(\.m)?(\.h)?$/.exec(comboKeys[i]!);
+    const parsed = /^(\d+)\.(\d+)\.(\d+)\.s(\d+)\.r(\d+)(\.m)?(\.h)?(?:\.u([0-9a-z]*))?$/.exec(comboKeys[i]!);
     if (!parsed) return null;
     const l = members[i]!.loadout;
-    const pick: Pick = { weapon: +parsed[1]!, echo: +parsed[2]!, mainstat: +parsed[3]!, sequence: +parsed[4]!, refine: +parsed[5]!, matrix: !!parsed[6], highSubs: !!parsed[7] };
+    const pick: Pick = { weapon: +parsed[1]!, echo: +parsed[2]!, mainstat: +parsed[3]!, sequence: +parsed[4]!, refine: +parsed[5]!, matrix: !!parsed[6], highSubs: !!parsed[7], mySubs: parsed[8] !== undefined };
     if (!l.refinements[pick.weapon]?.[pick.refine] || !l.echoLoadouts[pick.echo] || !l.mainstats[pick.mainstat] || (pick.matrix && !l.resonator.matrix)) return null;
+    // a "My build" row is only as current as the spread it was keyed on
+    if (pick.mySubs && (!l.mySubstat || l.mySubstatKey !== parsed[8])) return null;
     combo.push(comboOf(l, pick));
   }
   return { key, teamKey, members, combo };

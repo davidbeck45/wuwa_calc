@@ -329,10 +329,10 @@ function comparisonTable(rows: TeamRow[]): string {
   // are what is left inside the innermost group, ordered on their own totals. Every group stands
   // where its own best row would have stood, ties falling back to the deeper chain exactly as two
   // tied rows did before, so Team DPR runs down within a group rather than down the whole column.
-  // (A combo's key is `weapon.echo.mainstat.sN.rN[.m][.h]` — see solver.ts's own `comboOf()`;
+  // (A combo's key is `weapon.echo.mainstat.sN.rN[.m][.h][.uKEY]` — see solver.ts's own `comboOf()`;
   // Matrix is the table's own box, the same on every row, so it never tells two groups apart.)
   const LEVELS: ((c: Combo, p: string[]) => string)[] = [
-    (c) => (c.highSubs ? "h" : ""),
+    (c) => (c.mySubs ? "u" : c.highSubs ? "h" : ""),
     (_, p) => p[3]!,
     (_, p) => p[0]!,
     (_, p) => p[4]!,
@@ -381,7 +381,9 @@ function comparisonTable(rows: TeamRow[]): string {
   const gearKey = (c: Combo, axis: CmpAxis | null): string => {
     const [w, e, , seq, ref, ...rest] = c.key.split(".");
     const anyRank = axis === "weapons" || axis === "refines";
-    return [axis === "weapons" ? "*" : w, axis === "echoes" ? "*" : e, "*", axis === "sequences" ? "*" : seq, anyRank ? "*" : ref, rest.includes("m"), axis === "substats" || axis === null ? "*" : rest.includes("h")].join("|");
+    // the substat spread worn: the default, High Invest (`h`), or a player's own build (`uKEY`)
+    const subs = rest.find((s) => s === "h" || s.startsWith("u")) ?? "";
+    return [axis === "weapons" ? "*" : w, axis === "echoes" ? "*" : e, "*", axis === "sequences" ? "*" : seq, anyRank ? "*" : ref, rest.includes("m"), axis === "substats" || axis === null ? "*" : subs].join("|");
   };
   const twinKey = (run: TeamRun, pos: number, axis: CmpAxis): string =>
     `${run.teamKey}|${pos}|${axis}|${run.combo.map((c, k) => gearKey(c, k === pos ? axis : null)).join("-")}`;
@@ -482,7 +484,7 @@ function comparisonTable(rows: TeamRow[]): string {
         if (axisUsed(run.members[pos]!, filters, "refines") && t.combo.key.split(".")[4] !== "r0") continue;
       }
       if (axis === "refines" && t.combo.key.split(".")[4] !== "r0") continue;
-      if (axis === "substats" && t.combo.highSubs) continue;
+      if (axis === "substats" && (t.combo.highSubs || t.combo.mySubs)) continue;
       if (axis === "sequences" && (t.combo.sequence !== sequenceLevels(run.members[pos]!, filters)[0]
         || (!axisUsed(run.members[pos]!, filters, "refines") && t.combo.key.split(".")[4] !== "r0"))) continue;
       if (t.dpr > base) base = t.dpr;
