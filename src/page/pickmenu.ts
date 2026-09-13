@@ -19,7 +19,7 @@ import type { MenuItem } from "./table.js";
 interface Choice { label: string; axis: Axis; pick: Pick; is: (p: Pick) => boolean; free: (keyof Pick)[]; current: boolean; run?: TeamRun }
 
 /** What a row is matched on — the Matrix is the filters', the same on every row. */
-const FIELDS = ["weapon", "echo", "mainstat", "sequence", "refine", "highSubs"] as const;
+const FIELDS = ["weapon", "echo", "mainstat", "sequence", "refine", "highSubs", "mySubs"] as const;
 
 const picksOf = (run: TeamRun): Pick[] => picksOfKey(`${run.teamKey}-${run.combo.map((c) => c.key).join("-")}`)!;
 
@@ -77,11 +77,13 @@ function choices(run: TeamRun, i: number, kind: PickKind): Choice[] {
     return mainstatRanking(run.teamKey, run.members, picksOf(run), i).map(({ mainstat: k, run: ranked }) =>
       ({ ...choice(l.mainstats[k]!.name, "mainstats", { ...cur, mainstat: k }, (p) => p.mainstat === k, []), run: ranked }));
   }
-  // each spread named whole, as the cell names the one worn: at the ER rolls the team wants with it on
-  return [false, true].map((h) => {
-    const combo = run.combo.map((c, j) => (j === i ? comboOf(l, { ...cur, highSubs: h }) : c));
-    const name = l.spread(h, erRollsFor(run.teamKey, run.members, combo)[i]!).name;
-    return choice(name, "substats", { ...cur, highSubs: h }, (p) => p.highSubs === h, regear);
+  // each spread named whole, as the cell names the one worn: at the ER rolls the team wants with it on.
+  // ChemX32, High Invest, and the player's own spread where one was registered ("My build", Wuthering Tools+)
+  const spreads = [{ highSubs: false, mySubs: false }, { highSubs: true, mySubs: false }, ...(l.mySubstat ? [{ highSubs: false, mySubs: true }] : [])];
+  return spreads.map((s) => {
+    const combo = run.combo.map((c, j) => (j === i ? comboOf(l, { ...cur, ...s }) : c));
+    const name = l.spread(s.highSubs, erRollsFor(run.teamKey, run.members, combo)[i]!, s.mySubs).name;
+    return choice(name, "substats", { ...cur, ...s }, (p) => p.highSubs === s.highSubs && !!p.mySubs === s.mySubs, regear);
   });
 }
 
@@ -180,7 +182,7 @@ function ratios(m: Member, owns: [Choice, number][]): [Choice, number][] {
   const keep = axis === "weapons" ? (c: Choice) => l.weapons[c.pick.weapon]!.tier !== Rarity.Limited && (!ranked || c.pick.refine === 0)
     : axis === "refines" ? (c: Choice) => c.pick.refine === 0
     : axis === "sequences" ? (c: Choice) => c.pick.sequence === low
-    : axis === "substats" ? (c: Choice) => !c.pick.highSubs
+    : axis === "substats" ? (c: Choice) => !c.pick.highSubs && !c.pick.mySubs
     : () => true;
   const pool = owns.filter(([c]) => keep(c)).map(([, v]) => v);
   const base = pool.length ? Math.max(...pool) : Math.min(...owns.map(([, v]) => v));
