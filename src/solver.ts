@@ -8,7 +8,7 @@ import { Tier } from "./engine/stats.js";
 import type { Matrix } from "./engine/gear.js";
 import { runTeam, scoreOf, erRollsFor } from "./teamrun.js";
 import type { TeamRun, RowScore } from "./teamrun.js";
-import { teamAt } from "./teams.js";
+import { teamAt, ALL_TEAMS } from "./teams.js";
 
 export interface Member {
   name: string;
@@ -23,8 +23,9 @@ export const member = (loadout: Loadout, mainDps = false): Member =>
 
 /** `matrix` is the piece worn: the loadout's Matrix while that resonator's own Matrix filter is
  *  on (`matrixOn`), else null. */
-/** `build` is `key` without the main stat: what an ER requirement is guessed by (teamrun.ts). */
-export interface Combo { weapon: Weapon; echo: EchoLoadout; mainstat: Buff; sequence: number; matrix: Matrix | null; highSubs: boolean; key: string; build: string; }
+/** `build` is `key` without the main stat: what an ER requirement is guessed by (teamrun.ts).
+ *  `mySubs` is the "My build" substat row (a spread registered through `setMySubstat()`). */
+export interface Combo { weapon: Weapon; echo: EchoLoadout; mainstat: Buff; sequence: number; matrix: Matrix | null; highSubs: boolean; mySubs: boolean; key: string; build: string; }
 
 /** The axes a resonator's rows can be opened up on. */
 export type Axis = "weapons" | "echoes" | "mainstats" | "substats" | "sequences" | "refines";
@@ -120,8 +121,10 @@ export const bestKey = (teamKey: string, members: Member[], filters: Filters): s
     const own = filters.scoped.filter((s) => s.resonator === m.loadout.resonator.name).map((s) => `${s.on}~${s.value}~${s.axis}`).sort();
     return own.length ? `:${own.join(";")}` : "";
   };
+  // a registered "My build" spread adds a row to an open Substats compare, so it is part of the key
   const one = (m: Member): string =>
-    (matrixOn(m, filters) ? "m" : "") + AXES.map((a) => (axisOpen(m, filters, a) ? "1" : "0")).join("") + scoped(m);
+    (matrixOn(m, filters) ? "m" : "") + AXES.map((a) => (axisOpen(m, filters, a) ? "1" : "0")).join("")
+    + (m.loadout.mySubstat && axisOpen(m, filters, "substats") ? `u${m.loadout.mySubstatKey}` : "") + scoped(m);
   return `${teamKey}|${filters.cost}|${members.map(one).join(",")}`;
 };
 
@@ -132,17 +135,34 @@ export const picksKey = (teamKey: string, members: Member[], filters: Filters): 
 
 /** Indices into a loadout's gear lists plus chain level, rank (into `Loadout.refinements[weapon]`),
  *  matrix and substat spread. Only weapon/echo/mainstat are ever searched. */
-export interface Pick { weapon: number; echo: number; mainstat: number; sequence: number; refine: number; matrix: boolean; highSubs: boolean; }
+/** `mySubs` is the "My build" substat row (a spread registered through `setMySubstat()`); optional
+ *  because shipped solves predate it and read as false. */
+export interface Pick { weapon: number; echo: number; mainstat: number; sequence: number; refine: number; matrix: boolean; highSubs: boolean; mySubs?: boolean; }
 
 export const comboOf = (l: Loadout, p: Pick): Combo => {
   const matrix = p.matrix && l.resonator.matrix ? l.resonator.matrix : null;
+  const mySubs = !!p.mySubs && l.mySubstat !== null;
   return {
     weapon: l.refinements[p.weapon]![p.refine]!, echo: l.echoLoadouts[p.echo]!, mainstat: l.mainstats[p.mainstat]!,
-    sequence: p.sequence, matrix, highSubs: p.highSubs,
-    key: `${p.weapon}.${p.echo}.${p.mainstat}.s${p.sequence}.r${p.refine}${matrix ? ".m" : ""}${p.highSubs ? ".h" : ""}`,
-    build: `${p.weapon}.${p.echo}.s${p.sequence}.r${p.refine}${matrix ? ".m" : ""}${p.highSubs ? ".h" : ""}`,
+    sequence: p.sequence, matrix, highSubs: p.highSubs, mySubs,
+    key: `${p.weapon}.${p.echo}.${p.mainstat}.s${p.sequence}.r${p.refine}${matrix ? ".m" : ""}${p.highSubs ? ".h" : ""}${mySubs ? `.u${l.mySubstatKey}` : ""}`,
+    build: `${p.weapon}.${p.echo}.s${p.sequence}.r${p.refine}${matrix ? ".m" : ""}${p.highSubs ? ".h" : ""}${mySubs ? `.u${l.mySubstatKey}` : ""}`,
   };
 };
+
+/** Register (or clear, with null) a player's own substat spread on every loadout of a resonator —
+ *  the "My build" row a Substats compare then offers. `key` tells one build from the next in row
+ *  keys. Returns how many loadouts took it. Both the page and its solver workers must be told. */
+export function setMySubstat(resonator: string, piece: Buff | null, key = ""): number {
+  let n = 0;
+  for (const team of ALL_TEAMS) for (const l of team.loadouts) {
+    if (l.resonator.name !== resonator) continue;
+    l.mySubstat = piece;
+    l.mySubstatKey = piece ? key : "";
+    n++;
+  }
+  return n;
+}
 
 /** What a cost hands out on top of its signatures, read straight off the mode's name: the chain
  *  level, and the weapon rank as an index into a `Loadout.refinements` list. `holds` is whether
@@ -349,7 +369,7 @@ export function optimizeTeam(teamKey: string, members: Member[], filters: Filter
     const weapon = weaponOptions(m, filters, sig)[0] ?? 0;
     return {
       weapon, echo: 0, mainstat: 0, sequence: sequenceLevels(m, filters, holds)[0]!,
-      refine: costRefine(m, weapon, filters.cost, holds), matrix: matrixOn(m, filters), highSubs: false,
+      refine: costRefine(m, weapon, filters.cost, holds), matrix: matrixOn(m, filters), highSubs: false, mySubs: false,
     };
   });
   const run = (): TeamRun => trialRun(teamKey, members, picks);
@@ -516,7 +536,11 @@ export const MAINSTAT_ROWS = 9;
 function buildsOf(m: Member, home: Pick, f: Filters, sig: boolean): Pick[] {
   const l = m.loadout;
   const weapons = axisOpen(m, f, "weapons") ? weaponOptions(m, f, sig) : [home.weapon];
-  const subs = axisOpen(m, f, "substats") ? [false, true] : [home.highSubs];
+  // an open Substats compare runs the standard spread, the high-investment one, and the player's own
+  // when one was registered (the "My build" row)
+  const subs: { highSubs: boolean; mySubs: boolean }[] = axisOpen(m, f, "substats")
+    ? [{ highSubs: false, mySubs: false }, { highSubs: true, mySubs: false }, ...(l.mySubstat ? [{ highSubs: false, mySubs: true }] : [])]
+    : [{ highSubs: home.highSubs, mySubs: !!home.mySubs }];
   // a shut box runs the level the build settled on — a `mdps` cost lifted one member and the search
   // is where that answer lives, so it is read back off the picks rather than derived again
   const sequences = axisOpen(m, f, "sequences") ? sequenceLevels(m, f) : [home.sequence];
@@ -525,8 +549,8 @@ function buildsOf(m: Member, home: Pick, f: Filters, sig: boolean): Pick[] {
   for (const weapon of weapons) for (const sequence of sequences) {
     const at = { ...home, weapon, sequence, refine: Math.min(home.refine, l.refinements[weapon]!.length - 1) };
     const echoes = compares(m, f, "echoes", gateOf(l, at)) ? l.echoLoadouts.map((_, i) => i) : [home.echo];
-    for (const refine of refineLevels(m, f, at)) for (const echo of echoes) for (const highSubs of subs) {
-      picks.push({ ...at, refine, echo, highSubs });
+    for (const refine of refineLevels(m, f, at)) for (const echo of echoes) for (const spread of subs) {
+      picks.push({ ...at, refine, echo, ...spread });
     }
   }
   // a pick whose gear cannot fill this member's Energy bar is no build at all — drop it and let the
@@ -600,7 +624,7 @@ function rowPicks(
   const builds = cartesian(members.map((m, i) => buildsOf(m, best[i]!, filters, sigAllowed(i, holder, filters.cost))));
   const seen = new Map<string, Pick[]>();
   for (const picks of builds) {
-    const key = picks.map((p) => `${p.weapon}.${p.echo}.s${p.sequence}.r${p.refine}${p.highSubs ? ".h" : ""}`).join("-");
+    const key = picks.map((p) => `${p.weapon}.${p.echo}.s${p.sequence}.r${p.refine}${p.highSubs ? ".h" : ""}${p.mySubs ? ".u" : ""}`).join("-");
     if (!seen.has(key)) seen.set(key, picks);
   }
 
@@ -608,7 +632,7 @@ function rowPicks(
   // converged answer: re-searching its sonatas would only repeat the sweep that just settled it
   const isBest = (build: Pick[]): boolean => build.every((p, i) => {
     const b = best[i]!;
-    return p.weapon === b.weapon && p.echo === b.echo && p.sequence === b.sequence && p.refine === b.refine && p.highSubs === b.highSubs;
+    return p.weapon === b.weapon && p.echo === b.echo && p.sequence === b.sequence && p.refine === b.refine && p.highSubs === b.highSubs && !!p.mySubs === !!b.mySubs;
   });
   const rows: Pick[][] = [];
   const baselines = new Set<string>();

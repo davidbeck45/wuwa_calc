@@ -355,7 +355,7 @@ function erHeld(m: Member, c: Combo, rolls: number): number {
   if (hit !== undefined) return hit;
   // constant stats are one piece's own, so the pieces' ER sums — and each is priced once (`gearEr`)
   let held = 0;
-  for (const g of m.loadout.pieces(c.weapon, c.echo, c.mainstat, c.sequence, c.matrix !== null, c.highSubs, rolls)) held += gearEr(g);
+  for (const g of m.loadout.pieces(c.weapon, c.echo, c.mainstat, c.sequence, c.matrix !== null, c.highSubs, rolls, c.mySubs)) held += gearEr(g);
   per.set(key, held);
   return held;
 }
@@ -426,7 +426,8 @@ export function runTeam(teamKey: string, members: Member[], combo: Combo[], trac
       const key = needKey(teamKey, combo);
       const known = ER_NEED_AT.has(key);
       const worn = erRollsFor(teamKey, members, combo).map((r, i) => Math.max(r, floor[i]!));
-      const guard = members.map((m, i) => !combo[i]!.highSubs && worn[i]! < top(m));
+      // a "My build" spread is a fixed piece with no tier to climb, like the high one
+      const guard = members.map((m, i) => !combo[i]!.highSubs && !combo[i]!.mySubs && worn[i]! < top(m));
       let run: TeamRun;
       try {
         run = runTeamInner(teamKey, members, combo, trace, variants, worn, guard);
@@ -482,7 +483,7 @@ function runTeamInner(teamKey: string, members: Member[], combo: Combo[], trace:
   members.forEach((m, i) => {
     state.active = i;
     const c = combo[i]!;
-    withTeam(state, () => { for (const g of m.loadout.pieces(c.weapon, c.echo, c.mainstat, c.sequence, c.matrix !== null, c.highSubs, erRolls[i])) equip(g, 1); });
+    withTeam(state, () => { for (const g of m.loadout.pieces(c.weapon, c.echo, c.mainstat, c.sequence, c.matrix !== null, c.highSubs, erRolls[i], c.mySubs)) equip(g, 1); });
     state.slots[i]!.constEr = erHeld(m, c, erRolls[i]!);
     state.slots[i]!.erGuard = guard[i] ?? false;
     const alts = variants?.[i];
@@ -496,12 +497,12 @@ function runTeamInner(teamKey: string, members: Member[], combo: Combo[], trace:
       // substat piece along with its main stat — at the rolls the requirement known so far asks.
       // A variant has this build's buffs and so its need: where its own combo is not yet known,
       // this one's measurement is the guess, ahead of the team's
-      const worn = c.highSubs ? null : m.loadout.substat.at(erRolls[i]!);
+      const worn = c.highSubs || c.mySubs ? null : m.loadout.substat.at(erRolls[i]!);
       slot.variantSubOf = worn;
       const own = ER_NEED_AT.get(needKey(teamKey, combo)) ?? erNeedFor(teamKey, members, combo);
       slot.variantRolls = alts.map((alt) => erRollsWanted(m, alt, (ER_NEED_AT.get(needKey(teamKey, variantCombo(combo, i, alt))) ?? own)[i] ?? 0));
       slot.variantSubs = slot.variantRolls.map((rolls) => {
-        const piece = c.highSubs ? null : m.loadout.substat.at(rolls);
+        const piece = c.highSubs || c.mySubs ? null : m.loadout.substat.at(rolls);
         return piece === worn ? null : piece;
       });
     }

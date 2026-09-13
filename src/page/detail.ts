@@ -254,7 +254,7 @@ function energyRequirements(run: TeamRun, lines: ChainGroup[][]): Map<string, st
   run.members.forEach((m, idx) => {
     const maxEnergy = m.loadout.resonator.maxEnergy;
     const combo = run.combo[idx]!;
-    const constantSources = menuStats(m.loadout.pieces(combo.weapon, combo.echo, combo.mainstat, combo.sequence, combo.matrix !== null, combo.highSubs, erOf[idx]!))
+    const constantSources = menuStats(m.loadout.pieces(combo.weapon, combo.echo, combo.mainstat, combo.sequence, combo.matrix !== null, combo.highSubs, erOf[idx]!, combo.mySubs))
       .filter((e) => e.stat === Stat.Er);
     const constant = constantSources.reduce((n, e) => n + e.value, 0);
 
