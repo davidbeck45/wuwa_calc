@@ -5,6 +5,7 @@
 import { TUNE_BREAK_ENEMY } from "../shared/tunebreak.js";
 import { eligibleWeapons, scopedKey, axisUsed, weaponBase, echoLabel, axisOpen, AXES } from "../solver.js";
 import type { Axis, TeamCost, ScopedCompare } from "../solver.js";
+import { hasAccountState } from "../solver.js";
 import { TEAMS, RESONATOR_HUE, filters, resonatorFilters, OPTION_FILTER_MAPS, sequenceTagsOf, tagOwner, comparable, MATRIX_RESONATORS } from "./model.js";
 import type { ResonatorFilter, OptionKind } from "./model.js";
 import { esc, CLICK } from "./panels.js";
@@ -169,6 +170,7 @@ const COST_HELP = [
   "s0r1 all - All limited resonators get their best signature weapon, while Rover and 4* supports may still use standard or 4* weapons.",
   "s2r1 / s3r1 / s6r1 mdps +r1 supports - One main DPS per team runs that many sequence nodes, whichever gives the best DPR increase — never a support. Everyone else stays S0 on their own signature at R1.",
   "s6r5 all - Every resonator is S6 with their best weapon at R5.",
+  "My account (Wuthering Tools+) - Every resonator at the sequence, weapon and refinement you have set up in the calculator. No weapon set reads as S0R1; 4-star resonators and Rover forms count as owned (S6, their usual weapon) unless you set them up; a limited resonator you have not set up runs as S0R1 and its teams are hidden unless Teams I can field is off.",
 ];
 /** Shown on the Matrix bubble and on the name menu's own line — the box this used to describe is
  *  gone, the option is per resonator now. */
@@ -201,6 +203,7 @@ export function comparisonFilters(): string {
       + option("s2r1mdps", "s2r1 mdps +r1 supports")
       + option("s3r1mdps", "s3r1 mdps +r1 supports") + option("s6r1mdps", "s6r1 mdps +r1 supports")
       + option("s6r5", "s6r5 all")
+      + (hasAccountState() ? option("mine", "My account") : "")
       + `</select></div>`
       + `<div class="tcopt-desc"${open ? "" : " hidden"}><ul>${COST_HELP.map((l) => `<li>${esc(l)}</li>`).join("")}</ul></div>`
       + `</div>`;
