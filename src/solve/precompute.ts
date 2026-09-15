@@ -27,7 +27,8 @@ const MATRIX = [...new Set(ALL_TEAMS.flatMap((t) => t.loadouts).filter((l) => l.
  *  Anything else a filter opens — a compare axis, one resonator's Matrix — solves in the browser.
  *  Built off `TEAM_COSTS` rather than written out, so a cost mode added to the type ships without
  *  anyone remembering this list. A team with no Matrix kit keys alike in both and is solved once. */
-const STATES: Record<string, Partial<Filters>> = Object.fromEntries(TEAM_COSTS.flatMap((cost) => {
+// `mine` is one player's account (Wuthering Tools+) — nothing to ship
+const STATES: Record<string, Partial<Filters>> = Object.fromEntries(TEAM_COSTS.filter((cost) => cost !== "mine").flatMap((cost) => {
   const name = cost === defaultFilters().cost ? "default" : cost;
   return [[name, { cost }], [`${name}_mx`, { cost, matrix: MATRIX }]];
 }));

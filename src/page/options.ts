@@ -2,6 +2,7 @@
  * The option boxes more than one page shows in its aside: Team Cost and Matrix Buffs. Markup only —
  * each page wires its own change handlers (table.ts on the main page, value.ts and tierlist.ts).
  */
+import { hasAccountState } from "../solve/solver.js";
 import type { TeamCost } from "../solve/solver.js";
 
 const esc = (s: string): string => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -15,6 +16,8 @@ const COST_HELP = [
   "s6r5 mdps +s0r1 supports - One main DPS per team is S6 with their signature at R5, whichever gives the best DPR increase — never a support. Everyone else stays S0 on their own signature at R1.",
   "s6r5 all - Every resonator is S6 with their best weapon at R5.",
 ];
+/** The `mine` cost's own line, listed while an account is registered (Wuthering Tools+). */
+const MINE_HELP = "My account (Wuthering Tools+) - Every resonator at the sequence, weapon and refinement you have set up in the calculator. No weapon set reads as S0R1; 4-star resonators and Rover forms count as owned (S6, their usual weapon) unless you set them up; a limited resonator you have not set up runs as S0R1 and its teams are hidden unless Teams I can field is off.";
 
 const COST_LABEL: [TeamCost, string][] = [
   ["s0r0", "s0r0 all"], ["s0r1mdps", "s0r1 mdps +r0 supports"], ["s0r1", "s0r1 all"],
@@ -28,9 +31,10 @@ export function costBox(cost: TeamCost, open: boolean): string {
     + `<div class="tcopt-head">`
     + `<button type="button" class="tcopt-name" data-help="cost" aria-expanded="${open}">Team Cost<span class="arrow">›</span></button>`
     + `<select id="cost" class="tcselect" aria-label="Team Cost" title="Team Cost">`
-    + COST_LABEL.map(([value, label]) => `<option value="${value}"${cost === value ? " selected" : ""}>${label}</option>`).join("")
+    + [...COST_LABEL, ...(hasAccountState() ? [["mine", "My account"] as [TeamCost, string]] : [])]
+      .map(([value, label]) => `<option value="${value}"${cost === value ? " selected" : ""}>${label}</option>`).join("")
     + `</select></div>`
-    + `<div class="tcopt-desc"${open ? "" : " hidden"}><ul>${COST_HELP.map((l) => `<li>${esc(l)}</li>`).join("")}</ul></div>`
+    + `<div class="tcopt-desc"${open ? "" : " hidden"}><ul>${[...COST_HELP, ...(hasAccountState() ? [MINE_HELP] : [])].map((l) => `<li>${esc(l)}</li>`).join("")}</ul></div>`
     + `</div>`;
 }
 
