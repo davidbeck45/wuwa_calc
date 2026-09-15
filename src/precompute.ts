@@ -22,7 +22,8 @@ import type { Filters, Pick, Solved } from "./solver.js";
 /** The states the site ships: every Team Cost, and nothing else. Anything a filter opens — a
  *  compare axis, a resonator's Matrix — solves in the browser. Built off `TEAM_COSTS` rather than
  *  written out, so a cost mode added to the type ships without anyone remembering this list. */
-const STATES: Record<string, Partial<Filters>> = Object.fromEntries(TEAM_COSTS.map((cost) =>
+// `mine` is one player's account (Wuthering Tools+) — nothing to ship
+const STATES: Record<string, Partial<Filters>> = Object.fromEntries(TEAM_COSTS.filter((cost) => cost !== "mine").map((cost) =>
   [cost === defaultFilters().cost ? "default" : cost, { cost }]));
 
 const filtersFor = (state: string): Filters => ({ ...defaultFilters(), ...STATES[state] });

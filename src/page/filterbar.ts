@@ -5,6 +5,7 @@
 import { TUNE_BREAK_ENEMY } from "../shared/tunebreak.js";
 import { eligibleWeapons, scopedKey, axisUsed, weaponBase, echoLabel, axisOpen, AXES } from "../solver.js";
 import type { Axis, TeamCost, TeamScope, ScopedCompare } from "../solver.js";
+import { hasAccountState } from "../solver.js";
 import { TEAMS, RESONATOR_HUE, filters, resonatorFilters, OPTION_FILTER_MAPS, sequenceTagsOf, tagOwner, comparable, MATRIX_RESONATORS } from "./model.js";
 import type { ResonatorFilter, OptionKind } from "./model.js";
 import { esc, CLICK } from "./panels.js";
@@ -169,6 +170,7 @@ const COST_HELP = [
   "S1R1 / S2R1 / S3R1 / S6R1 mdps - One main DPS per team runs that many sequence nodes, whichever gives the best DPR increase — never a support. Everyone else stays S0R1.",
   "S6R5 mdps - That one main DPS is S6 and runs their weapon at R5; everyone else is still S0R1.",
   "S6R5 all - Every resonator is S6 with their best weapon at R5.",
+  "My account (Wuthering Tools+) - Every resonator at the sequence, weapon and refinement you have set up in the calculator. No weapon set reads as S0R1; 4-star resonators and Rover forms count as owned (S6, their usual weapon) unless you set them up; a limited resonator you have not set up runs as S0R1 and its teams are hidden unless Teams I can field is off.",
 ];
 /** Shown on the Matrix bubble and on the name menu's own line — the box this used to describe is
  *  gone, the option is per resonator now. */
@@ -200,6 +202,7 @@ export function comparisonFilters(): string {
       + option("s0r0", "S0R0 all") + option("s0r1", "S0R1 all") + option("s0r1mdps", "S0R1 mdps")
       + option("s1r1mdps", "S1R1 mdps") + option("s2r1mdps", "S2R1 mdps") + option("s3r1mdps", "S3R1 mdps")
       + option("s6r1mdps", "S6R1 mdps") + option("s6r5mdps", "S6R5 mdps") + option("s6r5", "S6R5 all")
+      + (hasAccountState() ? option("mine", "My account") : "")
       + `</select>`
       // which teams run at all, beside the cost they run at — the unintended ones are not solved
       // until this says All, so the box is a switch on the work as much as on the table

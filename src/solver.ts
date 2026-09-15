@@ -38,15 +38,55 @@ export const AXES: Axis[] = ["weapons", "echoes", "mainstats", "sequences", "ref
  *  (`s0r1mdps`), or every limited resonator on theirs (every other mode). The `sN`/`rN` in the
  *  name is the chain level and weapon rank on top of that — one main DPS's alone where the name
  *  ends in `mdps` (never a support's, however much the team would gain), everyone's where it
- *  doesn't. Rovers and 4* are S6 on standard/4* weapons throughout. */
+ *  doesn't. Rovers and 4* are S6 on standard/4* weapons throughout.
+ *  `mine` (Wuthering Tools+) runs every member at what one player's account holds — the chain
+ *  level, weapon and rank registered through `setAccountState()`; a resonator the account lacks
+ *  runs as `s0r1`. Never shipped (precompute.ts skips it): it is one player's, solved in-page. */
 export const TEAM_COSTS = ["s0r0", "s0r1mdps", "s0r1",
-  "s1r1mdps", "s2r1mdps", "s3r1mdps", "s6r1mdps", "s6r5mdps", "s6r5"] as const;
+  "s1r1mdps", "s2r1mdps", "s3r1mdps", "s6r1mdps", "s6r5mdps", "s6r5", "mine"] as const;
 export type TeamCost = typeof TEAM_COSTS[number];
+
+/** One player's account (Wuthering Tools+), by resonator name: what the `mine` cost runs them at.
+ *  `weapon` is the worn weapon's base name (matched against the loadout's own list with spaces and
+ *  punctuation dropped, `normWeapon`), `refine` its rank 1-5; `owned` false is a resonator the
+ *  player lacks — it runs as `s0r1` and the page may leave its teams out (model.ts `ownedOnly`). */
+export interface AccountEntry { sequence: number; weapon: string | null; refine: number; owned: boolean }
+let account: Record<string, AccountEntry> = {};
+let accountKey = "";
+/** Register (or clear, with null) the player's account. `key` tells one export from the next in
+ *  row keys and shipped-solve signatures, so a new export never reads a stale solve. Both the page
+ *  and its solver workers must be told. Returns how many resonators were registered. */
+export function setAccountState(entries: Record<string, AccountEntry> | null, key = ""): number {
+  account = entries ?? {};
+  accountKey = entries ? key : "";
+  return Object.keys(account).length;
+}
+export const hasAccountState = (): boolean => accountKey !== "";
+/** The account's entry for a member. A 4* or a Rover form (`Tier.Free`) is everyone's — Riley runs
+ *  them S6 on standard/4* weapons throughout — so one the account never set up still counts as
+ *  owned, at that default; one it did set up (a weapon equipped) runs the account's weapon. */
+export const accountOf = (m: Member): AccountEntry | undefined => {
+  const a = account[m.loadout.resonator.name];
+  if (a?.owned || !hasAccountState()) return a;
+  if (m.loadout.resonator.tier === Tier.Free) return { sequence: 6, weapon: a?.weapon ?? null, refine: a?.refine ?? 1, owned: true };
+  return a;
+};
+/** The cost as keys and signatures carry it: `mine` is one player's, so it carries their key. */
+export const costTag = (cost: TeamCost): string => (cost === "mine" ? `mine.${accountKey}` : cost);
+export const normWeapon = (name: string): string => name.toLowerCase().replace(/[^a-z0-9]/g, "");
 
 /** Which teams the table runs: the ones teams.ts marks `INTENDED`, or every combination its slot
  *  lists allow. An unintended team is never solved or run while the box says `intended`. */
 export const TEAM_SCOPES = ["intended", "all"] as const;
 export type TeamScope = typeof TEAM_SCOPES[number];
+
+/** The substat spread every row wears while its Substats box is shut (Wuthering Tools+): the
+ *  ChemX32 default (`standard`), every member's High Invest spread (`high`), or the player's own
+ *  build where one was registered through `setMySubstat()` and ChemX32 where none was (`mine`).
+ *  A row's spread, not a compare: it opens no column and adds no row — the same picks run in
+ *  another spread, the way an open box's High Invest / My build rows do. */
+export const SUBS_MODES = ["standard", "high", "mine"] as const;
+export type SubsMode = typeof SUBS_MODES[number];
 
 export interface Filters {
   /** The resonators running their own Matrix, by name. A full replacement of that member's build
@@ -58,7 +98,10 @@ export interface Filters {
   /** Per axis, the resonators (by name) whose rows compare it; everyone else runs their best pick. */
   weapons: string[]; echoes: string[]; mainstats: string[]; substats: string[]; sequences: string[]; refines: string[];
   scoped: ScopedCompare[];
+  /** the spread shut Substats boxes run (see `SUBS_MODES`); absent on a filter set saved before it existed */
+  subs?: SubsMode;
 }
+export const subsMode = (f: Filters): SubsMode => f.subs ?? "standard";
 
 /** An axis compared on one pick of a resonator's alone: `on` gates it, `value` is the pick as its
  *  cell reads (a level or rank number, a weapon name with or without rank, an `echoLabel()`). */
@@ -100,7 +143,7 @@ export const echoLabel = (l: Loadout, echo: EchoLoadout): string => echoLines(l,
 
 /** The page's opening state and what precompute.ts solves under — one definition so shipped keys match. */
 export const defaultFilters = (): Filters => ({
-  matrix: [], cost: "s0r1", scope: "intended", weapons: [], echoes: [], mainstats: [], substats: [], sequences: [], refines: [], scoped: [],
+  matrix: [], cost: "s0r1", scope: "intended", weapons: [], echoes: [], mainstats: [], substats: [], sequences: [], refines: [], scoped: [], subs: "standard",
 });
 
 export const axisOpen = (m: Member, filters: Filters, axis: Axis): boolean =>
@@ -112,7 +155,8 @@ export const matrixOn = (m: Member, filters: Filters): boolean =>
   m.loadout.resonator.matrix != null && filters.matrix.includes(m.loadout.resonator.name);
 
 export const filterSignature = (f: Filters): string =>
-  [[...f.matrix].sort().join("+"), f.cost, ...AXES.map((a) => [...f[a]].sort().join("+")), f.scoped.map(scopedKey).sort().join("+")].join(",");
+  [[...f.matrix].sort().join("+"), costTag(f.cost), ...AXES.map((a) => [...f[a]].sort().join("+")), f.scoped.map(scopedKey).sort().join("+")].join(",")
+  + (subsMode(f) === "standard" ? "" : `,${subsMode(f)}`);
 
 /** A solve's cache key: the team under everything that changes its row set — cost, and each
  *  member's Matrix bit, six axis bits and scoped compares. */
@@ -124,14 +168,15 @@ export const bestKey = (teamKey: string, members: Member[], filters: Filters): s
   // a registered "My build" spread adds a row to an open Substats compare, so it is part of the key
   const one = (m: Member): string =>
     (matrixOn(m, filters) ? "m" : "") + AXES.map((a) => (axisOpen(m, filters, a) ? "1" : "0")).join("")
-    + (m.loadout.mySubstat && axisOpen(m, filters, "substats") ? `u${m.loadout.mySubstatKey}` : "") + scoped(m);
-  return `${teamKey}|${filters.cost}|${members.map(one).join(",")}`;
+    + (m.loadout.mySubstat && (axisOpen(m, filters, "substats") || subsMode(filters) === "mine") ? `u${m.loadout.mySubstatKey}` : "") + scoped(m);
+  // a spread mode changes every row's substats, never the build: a fourth segment, absent on the default
+  return `${teamKey}|${costTag(filters.cost)}|${members.map(one).join(",")}${subsMode(filters) === "standard" ? "" : `|${subsMode(filters)}`}`;
 };
 
 /** The best build's key: only what the *search* reads (weapons compared, each member's Matrix,
  *  cost) — every other axis changes which rows open, never which build wins. */
 export const picksKey = (teamKey: string, members: Member[], filters: Filters): string =>
-  `${teamKey}|${filters.cost}|${members.map((m) => (matrixOn(m, filters) ? "m" : "") + (axisOpen(m, filters, "weapons") ? "1" : "0")).join("")}`;
+  `${teamKey}|${costTag(filters.cost)}|${members.map((m) => (matrixOn(m, filters) ? "m" : "") + (axisOpen(m, filters, "weapons") ? "1" : "0")).join("")}`;
 
 /** Indices into a loadout's gear lists plus chain level, rank (into `Loadout.refinements[weapon]`),
  *  matrix and substat spread. Only weapon/echo/mainstat are ever searched. */
@@ -168,7 +213,13 @@ export function setMySubstat(resonator: string, piece: Buff | null, key = ""): n
  *  level, and the weapon rank as an index into a `Loadout.refinements` list. `holds` is whether
  *  this member is the one getting it — a mode ending in `mdps` lifts exactly one, whichever the
  *  team gains most from (`optimizeTeam` hands it out the way it hands out the one signature). */
-const costGrant = (cost: TeamCost, holds: boolean): { sequence: number; refine: number } => {
+const costGrant = (cost: TeamCost, holds: boolean, m?: Member): { sequence: number; refine: number } => {
+  if (cost === "mine") {
+    // the player's own: their chain level, and their weapon's rank where they wear one (a resonator
+    // with no weapon set, or one the account lacks, reads as `s0r1`)
+    const a = m ? accountOf(m) : undefined;
+    return a?.owned ? { sequence: a.sequence, refine: a.weapon ? Math.max(0, a.refine - 1) : 0 } : { sequence: 0, refine: 0 };
+  }
   const [, sequence, rank, mdps] = /^s(\d)r(\d)(mdps)?$/.exec(cost)!;
   return mdps && !holds ? { sequence: 0, refine: 0 } : { sequence: +sequence!, refine: Math.max(0, +rank! - 1) };
 };
@@ -184,14 +235,14 @@ function costLevel(m: Member, cost: TeamCost, holds: boolean): number | null {
   const l = m.loadout;
   const max = l.sequences.length;
   if (!max) return l.minSequence ? null : 0;
-  const at = Math.min(Math.max(Math.min(baseSequence(l.resonator), max), costGrant(cost, holds).sequence), max);
+  const at = Math.min(Math.max(Math.min(baseSequence(l.resonator), max), costGrant(cost, holds, m).sequence), max);
   return at < l.minSequence ? null : at;
 }
 
 /** The rank index a lifted member runs `weapon` at: the cost's, capped by the ranks that weapon
  *  actually lists (a loadout may pin one rank rather than the whole five). */
 const costRefine = (m: Member, weapon: number, cost: TeamCost, holds: boolean): number =>
-  Math.min(costGrant(cost, holds).refine, m.loadout.refinements[weapon]!.length - 1);
+  Math.min(costGrant(cost, holds, m).refine, m.loadout.refinements[weapon]!.length - 1);
 
 /** Ranks a row at `p` runs its weapon at: every listed rank while refines are compared there, else
  *  the build's own. An open Sequences box runs its whole ladder at R1 whatever the cost hands out,
@@ -233,8 +284,28 @@ export const standardWeapon = (l: Loadout): number => Math.max(0, l.weapons.find
 export function weaponOptions(m: Member, filters: Filters, sig: boolean): number[] {
   const l = m.loadout;
   if (axisOpen(m, filters, "weapons")) return l.weapons.map((_, i) => i);
+  if (filters.cost === "mine") return [accountWeapon(m)];
   return [sig ? 0 : standardWeapon(l)];
 }
+
+/** `mine`: the weapon the player wears, where the loadout lists it. No weapon set, or a resonator
+ *  the account lacks, reads as `s0r1` (the signature at R1); a worn weapon the loadout never lists
+ *  runs the best standard — open the Weapons compare beside it to see what the listed ones do. */
+export function accountWeapon(m: Member): number {
+  const a = accountOf(m);
+  const l = m.loadout;
+  if (!a?.owned || !a.weapon) return 0;
+  const want = normWeapon(a.weapon);
+  const i = l.weapons.findIndex((w) => normWeapon(weaponBase(w)) === want);
+  return i >= 0 ? i : standardWeapon(l);
+}
+/** Whether a `mine` member runs a stand-in for the weapon the player actually wears. */
+export const weaponApproximated = (m: Member): boolean => {
+  const a = accountOf(m);
+  if (!a?.owned || !a.weapon) return false;
+  const want = normWeapon(a.weapon);
+  return !m.loadout.weapons.some((w) => normWeapon(weaponBase(w)) === want);
+};
 
 /** Whether every limited resonator wears their signature: `s0r0` gives nobody one and `s0r1mdps`
  *  hands out exactly one, so only those two search on standards. */
@@ -538,9 +609,14 @@ function buildsOf(m: Member, home: Pick, f: Filters, sig: boolean): Pick[] {
   const weapons = axisOpen(m, f, "weapons") ? weaponOptions(m, f, sig) : [home.weapon];
   // an open Substats compare runs the standard spread, the high-investment one, and the player's own
   // when one was registered (the "My build" row)
+  // a shut box runs the spread mode: High Invest for everyone, the player's own build where one is
+  // registered (ChemX32 where none is), or the build's own pick
+  const mode = subsMode(f);
   const subs: { highSubs: boolean; mySubs: boolean }[] = axisOpen(m, f, "substats")
     ? [{ highSubs: false, mySubs: false }, { highSubs: true, mySubs: false }, ...(l.mySubstat ? [{ highSubs: false, mySubs: true }] : [])]
-    : [{ highSubs: home.highSubs, mySubs: !!home.mySubs }];
+    : mode === "high" ? [{ highSubs: true, mySubs: false }]
+      : mode === "mine" && l.mySubstat ? [{ highSubs: false, mySubs: true }]
+        : [{ highSubs: home.highSubs, mySubs: !!home.mySubs }];
   // a shut box runs the level the build settled on — a `mdps` cost lifted one member and the search
   // is where that answer lives, so it is read back off the picks rather than derived again
   const sequences = axisOpen(m, f, "sequences") ? sequenceLevels(m, f) : [home.sequence];
