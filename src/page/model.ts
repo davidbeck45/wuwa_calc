@@ -8,8 +8,8 @@ import { baseSequence } from "../engine/gear.js";
 import { TUNE_BREAK_ENEMY } from "../shared/tunebreak.js";
 import { buildReport } from "../display.js";
 import type { Report } from "../display.js";
-import { member, comboOf, eligibleWeapons, refineLevels, sequenceLevels, scopedKey, axisUsed, weaponBase, echoLabel, MAINSTAT_ROWS, defaultFilters, bestKey, picksKey, axisOpen, filterSignature, AXES } from "../solver.js";
-import type { Member, Combo, Pick, Filters, Solved, SolveSave, Axis, TeamCost, ScopedCompare } from "../solver.js";
+import { member, comboOf, eligibleWeapons, refineLevels, sequenceLevels, scopedKey, axisUsed, weaponBase, echoLabel, MAINSTAT_ROWS, defaultFilters, bestKey, picksKey, axisOpen, filterSignature, AXES, accountOf, subsMode } from "../solver.js";
+import type { Member, Combo, Pick, Filters, Solved, SolveSave, Axis, TeamCost, ScopedCompare, SubsMode } from "../solver.js";
 import { runTeam, runFromScore } from "../teamrun.js";
 import type { TeamRun } from "../teamrun.js";
 import { teamKey, teamAt, ALL_TEAMS, PRIMARY_TEAM, INTERCHANGEABLE } from "../teams.js";
@@ -234,7 +234,13 @@ function leaderNeeds(): Map<string, number> {
  * added there is nothing to lead the narrowing, so it falls back to the whole roster narrowed by
  * everyone added: a lone support reads as "every team fielding them".
  */
+/** Wuthering Tools+: under `mine`, whether a team with a resonator the player lacks is listed at
+ *  all (default: no — the table reads as "teams I can field"). Other costs ignore it. */
+export let ownedOnly = true;
+export function setOwnedOnly(v: boolean): void { ownedOnly = v; }
+
 export function teamWanted(key: string, members: Member[]): boolean {
+  if (filters.cost === "mine" && ownedOnly && members.some((m) => !accountOf(m)?.owned)) return false;
   const has = (name: string): boolean => members.some((m) => m.name === name);
   // the bench behind one pairing: both teammates beside the interchangeable slot named, and every
   // support who can stand in it is solved. Short of that only the group's own team is, so the ones
@@ -427,9 +433,10 @@ export function discardRestoredSolves(): boolean {
 
 /** The filter state a `bestKey()` was made under, read back off the key. */
 function filtersOfKey(key: string, members: Member[]): Filters {
-  const [, cost, bits] = key.split("|");
+  const [, cost, bits, subs] = key.split("|");
   const f = defaultFilters();
-  f.cost = cost as TeamCost;
+  f.cost = (cost ?? "").split(".")[0] as TeamCost; // `mine.<account key>` carries the player's key (solver.ts costTag)
+  if (subs === "high" || subs === "mine") f.subs = subs;
   (bits ?? "").split(",").forEach((entry, i) => {
     const m = members[i];
     if (!m) return;
@@ -548,10 +555,15 @@ export const hashParams = (): URLSearchParams => new URLSearchParams(location.ha
 
 const COMPARE_PARAM: Record<Axis, string> = { weapons: "cw", echoes: "ce", mainstats: "cm", substats: "cb", sequences: "cq", refines: "cr" };
 const SCOPED_PARAM = "cs";
+/** `sb=h|m`: the spread every shut Substats box runs (solver.ts `SUBS_MODES`); absent = ChemX32. */
+const SUBS_PARAM = "sb";
+const SUBS_CODE: Record<SubsMode, string> = { standard: "", high: "h", mine: "m" };
 const COST_CODE: Record<TeamCost, string> = {
   s0r0: "r0", s0r1mdps: "r1m", s0r1: "r1",
-  s2r1mdps: "s2m", s3r1mdps: "s3m", s6r1mdps: "s6m", s6r5: "s6r5",
+  s2r1mdps: "s2m", s3r1mdps: "s3m", s6r1mdps: "s6m", s6r5: "s6r5", mine: "mine",
 };
+/** `own=0`: list teams with a resonator the account lacks too (`mine` only; see `teamWanted`). */
+const OWNED_PARAM = "own";
 
 const FILTER_GROUPS: { include: string; exclude: string; map: Map<string, ResonatorFilter> }[] = [
   { include: "r", exclude: "x", map: resonatorFilters },
@@ -579,6 +591,15 @@ export function applyHash(): boolean {
   const code = params.get("tc");
   const cost = (Object.keys(COST_CODE) as TeamCost[]).find((c) => COST_CODE[c] === code) ?? "s0r1";
   if (filters.cost !== cost) { filters.cost = cost; changed = true; }
+  {
+    const own = params.get(OWNED_PARAM) !== "0";
+    if (ownedOnly !== own) { ownedOnly = own; changed = true; }
+  }
+  {
+    const code = params.get(SUBS_PARAM) ?? "";
+    const subs = (Object.keys(SUBS_CODE) as SubsMode[]).find((m) => SUBS_CODE[m] === code) ?? "standard";
+    if (subsMode(filters) !== subs) { filters.subs = subs; changed = true; }
+  }
   for (const axis of AXES) {
     const next = (params.get(COMPARE_PARAM[axis]) ?? "").split(",").filter(Boolean)
       .map((n) => RESONATOR_NAME_BY_COMPACT.get(n) ?? n);
@@ -672,6 +693,8 @@ export function syncHash(team: string | null = hashTeam(), push = false): void {
   const compact = (n: string): string => encodeURIComponent(n.replace(/ /g, ""));
   const parts = filters.matrix.length ? [`mx=${filters.matrix.map(compact).join(",")}`] : [];
   if (filters.cost !== "s0r1") parts.push(`tc=${COST_CODE[filters.cost]}`);
+  if (!ownedOnly) parts.push(`${OWNED_PARAM}=0`);
+  if (subsMode(filters) !== "standard") parts.push(`${SUBS_PARAM}=${SUBS_CODE[subsMode(filters)]}`);
   for (const axis of AXES) {
     if (filters[axis].length) parts.push(`${COMPARE_PARAM[axis]}=${filters[axis].map((n) => encodeURIComponent(n.replace(/ /g, ""))).join(",")}`);
   }
