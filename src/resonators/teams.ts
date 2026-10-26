@@ -401,7 +401,8 @@ if (UNPLAYABLE_TEAMS.length) {
  *  a team written out on a line of its own shows however much some other line's bench looks like
  *  it — unless the two lines named one of the same teams (`FOLDED`), where they are the one bench
  *  after all and only its first support stands. */
-const SUPPORT_GROUP: string[] = ALL_TEAMS.map((team) => {
+// Wuthering Tools+: exported so the `mine` cost can stand a group for a team the player can field (page/model.ts)
+export const SUPPORT_GROUP: string[] = ALL_TEAMS.map((team) => {
   let key = `${team.from}|${skeleton(team)}`;
   while (FOLDED.has(key)) key = FOLDED.get(key)!;
   return key;

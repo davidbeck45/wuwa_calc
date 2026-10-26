@@ -10,11 +10,11 @@ import { teamCode, readTeamCode } from "./teamcode.js";
 import { TUNE_BREAK_ENEMY } from "../shared/tunebreak.js";
 import { buildReport } from "./display.js";
 import type { Report } from "./display.js";
-import { member, comboOf, eligibleWeapons, refineLevels, shownRanks, shownWeapons, sequenceLevels, scopedKey, axisUsed, weaponBase, echoLabel, echoPicks, defaultFilters, bestKey, picksKey, axisOpen, filterSignature, AXES, accountOf, subsMode } from "../solve/solver.js";
+import { member, comboOf, eligibleWeapons, refineLevels, shownRanks, shownWeapons, sequenceLevels, scopedKey, axisUsed, weaponBase, echoLabel, echoPicks, defaultFilters, bestKey, picksKey, axisOpen, filterSignature, AXES, accountOf, subsMode, costTag } from "../solve/solver.js";
 import type { Member, Combo, Pick, Filters, Solved, SolveSave, Axis, TeamCost, ScopedCompare, SubsMode } from "../solve/solver.js";
 import { runTeam, runFromScore, erRollsFor } from "../solve/teamrun.js";
 import type { TeamRun } from "../solve/teamrun.js";
-import { teamKey, teamAt, ALL_TEAMS, PRIMARY_TEAM, INTERCHANGEABLE } from "../resonators/teams.js";
+import { teamKey, teamAt, ALL_TEAMS, PRIMARY_TEAM, INTERCHANGEABLE, SUPPORT_GROUP } from "../resonators/teams.js";
 
 /* ------------------------------------------------------------------------------------ teams */
 
@@ -270,15 +270,38 @@ function leaderNeeds(): Map<string, number> {
 export let ownedOnly = true;
 export function setOwnedOnly(v: boolean): void { ownedOnly = v; }
 
+/** Wuthering Tools+: the teams that stand for their group under `mine` with "teams I can field" on — per support
+ *  group, the first team (lowest `lead`, the order `PRIMARY_TEAM` reads) whose members the account all owns, so a
+ *  group whose own team runs a support the player lacks still stands, through a support they have: since Riley's
+ *  7bcbb24 Lily (not in Wuthering Tools+) leads 48 of his 302 groups. Recomputed when the account changes (its
+ *  key is a hash of what it owns). */
+let fieldableFor = "";
+let fieldable = new Set<string>();
+export function fieldablePrimaries(): Set<string> {
+  const tag = costTag("mine");
+  if (tag === fieldableFor) return fieldable;
+  const best = new Map<string, { lead: number; key: string }>();
+  ALL_TEAMS.forEach((team, i) => {
+    const key = teamKey(i);
+    if (!TEAMS[key]!.every((m) => accountOf(m)?.owned)) return;
+    const held = best.get(SUPPORT_GROUP[i]!);
+    if (!held || team.lead < held.lead) best.set(SUPPORT_GROUP[i]!, { lead: team.lead, key });
+  });
+  fieldable = new Set([...best.values()].map((b) => b.key));
+  fieldableFor = tag;
+  return fieldable;
+}
+
 export function teamWanted(key: string, members: Member[]): boolean {
-  if (filters.cost === "mine" && ownedOnly && members.some((m) => !accountOf(m)?.owned)) return false;
+  const mineOwned = filters.cost === "mine" && ownedOnly;
+  if (mineOwned && members.some((m) => !accountOf(m)?.owned)) return false;
   const has = (name: string): boolean => members.some((m) => m.name === name);
   // the bench behind one pairing: both teammates beside the interchangeable slot named, and every
   // support who can stand in it is solved. Short of that only the group's own team is, so the ones
   // it stands for cost nothing to leave out — except when the name added is an interchangeable
   // support themselves, which asks about them rather than about the pairing, and every group they
   // are the stood-down half of has to answer for them
-  if (!PRIMARY_TEAMS.has(key)
+  if (!(mineOwned ? fieldablePrimaries() : PRIMARY_TEAMS).has(key)
     && !members.some((m) => INTERCHANGEABLE.has(m.loadout) && resonatorFilters.get(m.name) === "include")
     && !members.every((m) => INTERCHANGEABLE.has(m.loadout) || resonatorFilters.get(m.name) === "include")) return false;
   for (const [name, mode] of resonatorFilters) if (mode === "exclude" && has(name)) return false;
