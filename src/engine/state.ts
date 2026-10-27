@@ -1371,7 +1371,10 @@ function offFieldClock(gear: Gear, state: State, holder: TeamMember | null, pres
 // it is the Tune Break enemy's own Base Resistance gear (tunebreak.ts), seven scoped -20% RES
 // Reduce entries, so the res column's own trace foots to the number the formula uses.
 const ENEMY_RES = 0, ENEMY_DEF_LEVEL = 100;
-export const enemyDef = () => 792 + 8 * ENEMY_DEF_LEVEL;
+// Wuthering Tools+ (fork `plus`): another level for the runs in between — shared/profile.ts `setEnemyProfile`
+let enemyLevel: number | null = null;
+export function setEnemyLevel(level: number | null): void { enemyLevel = level; }
+export const enemyDef = () => 792 + 8 * (enemyLevel ?? ENEMY_DEF_LEVEL);
 export const enemyRes = () => ENEMY_RES;
 
 /** The whole fight as `evaluate()` can put it back — allocated once per State (`State.snapshots`)

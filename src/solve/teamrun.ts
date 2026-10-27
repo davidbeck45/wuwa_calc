@@ -11,6 +11,7 @@ import { ER_SHORT, settleGauges } from "../engine/evaluate.js";
 import { runRotations } from "../engine/rotation.js";
 import type { ActionField } from "../engine/rotation.js";
 import { TUNE_BREAK_ENEMY } from "../shared/tunebreak.js";
+import { profileEnemyGear, profileTeamGear } from "../shared/profile.js";
 import { erRollValue, ER_TOLERANCE } from "../shared/substats.js";
 import type { Spread } from "../shared/substats.js";
 import { Stat } from "../engine/stats.js";
@@ -710,7 +711,10 @@ function runTeamInner(teamKey: string, members: Member[], combo: Combo[], trace:
   members.forEach((m, i) => {
     state.active = i;
     const c = combo[i]!;
-    withTeam(state, () => { for (const g of m.loadout.pieces(c.weapon, c.echo, c.mainstat, c.sequence, c.matrix !== null, c.highSubs, erRolls[i], c.mySubs)) equip(g, 1); });
+    withTeam(state, () => {
+      for (const g of m.loadout.pieces(c.weapon, c.echo, c.mainstat, c.sequence, c.matrix !== null, c.highSubs, erRolls[i], c.mySubs)) equip(g, 1);
+      for (const g of profileTeamGear()) equip(g, 1);
+    });
     state.slots[i]!.constEr = erHeld(m, c, erRolls[i]!);
     if (trace) {
       const need = (ER_NEED_AT.get(needKey(teamKey, combo)) ?? erNeedFor(teamKey, members, combo))[i] ?? 0;
@@ -735,7 +739,11 @@ function runTeamInner(teamKey: string, members: Member[], combo: Combo[], trace:
   });
   state.active = 0;
   // the enemy is equipped like a member: the Tune Break resonator fires the break itself (tunebreak.ts)
-  withTeam(state, () => equipEnemy(TUNE_BREAK_ENEMY));
+  withTeam(state, () => {
+    equipEnemy(TUNE_BREAK_ENEMY);
+    // Wuthering Tools+ (fork `plus`): a profiled enemy's own gear (shared/profile.ts) — none unless one is set
+    for (const g of profileEnemyGear()) equipEnemy(g);
+  });
 
   // one continuous fight of four rotations, whatever the team, the opener the first of them
   const { sections, starts, end: frames, blind } = runRotations(state, members.map((m, i) => m.loadout.rotationAt(combo[i]!.sequence)), 4);
